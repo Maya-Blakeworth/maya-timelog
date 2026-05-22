@@ -47,6 +47,9 @@
   .due-amt-lbl{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:4px;}
   .due-amt{font-family:'Playfair Display',serif;font-size:38px;color:var(--gold);line-height:1;}
   .due-hrs{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:4px;}
+  .wise-btn{display:inline-flex;align-items:center;gap:6px;margin-top:10px;background:#9fe870;color:#163300;border:none;border-radius:6px;padding:6px 12px;font-family:'DM Mono',monospace;font-size:9px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;cursor:pointer;transition:background .15s,transform .1s;}
+  .wise-btn:hover{background:#b5f28a;}
+  .wise-btn:active{transform:scale(.97);}
 
   /* LLC cards */
   .llc-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px;}
@@ -143,6 +146,10 @@
       <div class="due-amt-lbl">Total Amount Due</div>
       <div class="due-amt" id="due-amt">—</div>
       <div class="due-hrs" id="due-hrs">—</div>
+      <a class="wise-btn" href="https://wise.com/pay/business/mayaservices?utm_source=quick_pay" target="_blank" rel="noopener">
+        <svg style="width:12px;height:12px;flex-shrink:0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 7l4 10 4-7 4 7 4-10" stroke="#163300" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Pay via Wise
+      </a>
     </div>
   </div>
 
