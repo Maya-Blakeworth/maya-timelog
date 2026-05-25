@@ -418,7 +418,7 @@ function renderBanner(mo, cm) {
 function renderLLC(mo) {
   const g=sum(mo,'subG'), b=sum(mo,'subB'), h=sum(mo,'subH');
   // hours per LLC: Guilford col, SLP col, everything else
-  const gHrs = mo.reduce((a,r)=>a+(r.propHrs['Guilford']||0),0);
+  const gHrs = mo.reduce((a,r)=>a+(r.propHrs['Guilford Apartments']||0),0);
   const bHrs = mo.reduce((a,r)=>a+(r.propHrs['SLP / Blakeworth']||0),0);
   const hHrs = sum(mo,'hrs') - gHrs - bHrs;
   set('llc-G-amt',$m(g)); set('llc-G-hrs',gHrs.toFixed(1)+' hrs billed this month');
