@@ -155,7 +155,7 @@
     </div>
     <div style="text-align:right">
       <div class="prev-bal-amt" id="prev-bal-amt">—</div>
-      <div class="prev-bal-note">Unpaid — please settle before the 5th</div>
+      <div class="prev-bal-note" id="prev-bal-note">—</div>
     </div>
   </div>
 
@@ -247,6 +247,7 @@
 const SHEET_ID  = '14Sm-DZzAil0AyS430d3dWWcKiiUgq3SZxZ6vUqNSL-w';
 const TAB_NAME  = 'TIMESHEET';   // exact tab name (case-sensitive)
 const REFRESH_MS = 30 * 60 * 1000; // 30 min auto-refresh
+const PAYMENTS_TAB = 'Payments'; // tab name for logged payments (Payment Date, Amount, Mode of Payment, Month Applied To, Notes)
 
 // Verified column indices (0-based) from actual sheet:
 // col0=blank, col1=Date, col2=Day, col3=TotalHrs,
@@ -275,7 +276,7 @@ const PROPS = [
 ];
 
 // ── STATE ────────────────────────────────────────────────────────────────────
-let rows = [], propWk = 'ALL', logWk = 'ALL', timer = null, lastPaidKey = '';
+let rows = [], paymentsByMonth = {}, propWk = 'ALL', logWk = 'ALL', timer = null;
 
 // ── UTILS ────────────────────────────────────────────────────────────────────
 const $m  = n => '$' + (n||0).toFixed(2);
@@ -346,90 +347,123 @@ function parseCSV(text) {
 
 // ── FETCH ────────────────────────────────────────────────────────────────────
 async function fetchSheet() {
-  ld('Syncing your time log…');
-  try {
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(TAB_NAME)}&t=${Date.now()}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('HTTP '+res.status);
-    const text = await res.text();
-    if (!text || text.length < 50) throw new Error('Empty response — check sheet sharing');
-    process(parseCSV(text));
-  } catch(e) {
-    showErr('Could not load data: '+e.message+'<br><br>Make sure the sheet sharing is set to <strong>Anyone with the link can view</strong>.');
-  }
+ld('Syncing your time log…');
+try {
+const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(TAB_NAME)}&t=${Date.now()}`;
+const res = await fetch(url);
+if (!res.ok) throw new Error('HTTP '+res.status);
+const text = await res.text();
+if (!text || text.length < 50) throw new Error('Empty response — check sheet sharing');
+
+let paymentRaw = [];
+try {
+const purl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(PAYMENTS_TAB)}&t=${Date.now()}`;
+const pres = await fetch(purl);
+if (pres.ok) {
+const ptext = await pres.text();
+if (ptext && ptext.length > 10) paymentRaw = parseCSV(ptext);
+}
+} catch(pe) { /* Payments tab optional — ignore errors */ }
+
+process(parseCSV(text), paymentRaw);
+} catch(e) {
+showErr('Could not load data: '+e.message+'<br><br>Make sure the sheet sharing is set to <strong>Anyone with the link can view</strong>.');
+}
 }
 
-function process(raw) {
-  // Scan for PAID marker row (col0 = "PAID", col1 = YYYY-MM last-paid month).
-  // Maya adds one row anywhere in TIMESHEET with PAID in col A and e.g. 2026-05 in col B.
-  lastPaidKey = '';
-  for (let i = 0; i < raw.length; i++) {
-    if ((raw[i][0]||'').trim().toUpperCase() === 'PAID') {
-      const candidate = (raw[i][1]||'').trim();
-      if (/^\d{4}-\d{2}$/.test(candidate)) lastPaidKey = candidate;
-      break;
-    }
-  }
-
-  // Find header row: col1 contains "date" and col3 contains "total"
-  let start = -1;
-  for (let i=0; i<raw.length; i++) {
-    const r = raw[i];
-    const c1 = (r[1]||'').toLowerCase();
-    const c3 = (r[3]||'').toLowerCase();
-    if (c1.includes('date') && c3.includes('total')) { start = i+1; break; }
-  }
-
-  if (start === -1) {
-    // fallback: look for "Date" anywhere
-    for (let i=0; i<raw.length; i++) {
-      if (raw[i].some(c => c && c.toLowerCase().trim()==='date')) { start=i+1; break; }
-    }
-  }
-
-  if (start === -1) { showErr('Could not find the TIMESHEET data. Check tab name is "TIMESHEET".'); return; }
-
-  rows = [];
-  for (let i=start; i<raw.length; i++) {
-    const r = raw[i];
-    if ((r[0]||'').trim().toUpperCase() === 'PAID') continue; // skip paid-status row
-    const ds = r[C.date];
-    if (!ds || !ds.trim()) continue;
-    const d = pDate(ds);
-    if (!d || isNaN(d)) continue;
-    const hrs  = phr(r[C.hrs]);
-    const subG = pfn(r[C.subG]);
-    const subB = pfn(r[C.subB]);
-    const subH = pfn(r[C.subH]);
-    const propHrs = {};
-    PROPS.forEach(p => { propHrs[p.label] = phr(r[p.idx]); });
-    rows.push({
-      date:d, day:r[C.day]||'', hrs,
-      subG, subB, subH, total:subG+subB+subH,
-      propHrs, notes:r[C.notes]||'',
-      mKey:mKey(d), wKey:wKey(d),
-    });
-  }
-
-  if (!rows.length) { showErr('No time entries found in the TIMESHEET tab.'); return; }
-
-  // Default: full current month, all weeks
-  propWk = 'ALL'; logWk = 'ALL';
-
-  render();
-  hideLoad();
-
-  const now = new Date();
-  document.getElementById('sync-lbl').textContent =
-    'Live · Last synced '+now.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-  document.getElementById('ftr').textContent =
-    'Auto-refreshes every 30 min · Data pulled live from Google Sheets';
-
-  if (timer) clearTimeout(timer);
-  timer = setTimeout(fetchSheet, REFRESH_MS);
+function monthKeyFromLabel(s) {
+s = (s||'').trim();
+if (!s) return '';
+let m = s.match(/^(\d{4})-(\d{1,2})$/);
+if (m) return m[1]+'-'+String(+m[2]).padStart(2,'0');
+m = s.match(/^(\d{1,2})\/(\d{4})$/);
+if (m) return m[2]+'-'+String(+m[1]).padStart(2,'0');
+const d = pDate(s);
+if (d && !isNaN(d)) return mKey(d);
+return '';
 }
 
-// ── RENDER ───────────────────────────────────────────────────────────────────
+function parsePayments(raw) {
+const byMonth = {};
+for (let i=0; i<raw.length; i++) {
+const r = raw[i];
+const ds = r[0];
+if (!ds || !ds.trim()) continue;
+if (ds.trim().toLowerCase()==='payment date') continue; // header row
+const amt = pfn(r[1]);
+if (!amt) continue;
+const monthLabel = r[3];
+let key = monthKeyFromLabel(monthLabel);
+if (!key) {
+const d = pDate(ds);
+if (d && !isNaN(d)) key = mKey(d);
+}
+if (!key) continue;
+byMonth[key] = (byMonth[key]||0) + amt;
+}
+return byMonth;
+}
+
+function process(raw, paymentRaw) {
+paymentsByMonth = parsePayments(paymentRaw || []);
+
+// Find header row: col1 contains "date" and col3 contains "total"
+let start = -1;
+for (let i=0; i<raw.length; i++) {
+const r = raw[i];
+const c1 = (r[1]||'').toLowerCase();
+const c3 = (r[3]||'').toLowerCase();
+if (c1.includes('date') && c3.includes('total')) { start = i+1; break; }
+}
+
+if (start === -1) {
+// fallback: look for "Date" anywhere
+for (let i=0; i<raw.length; i++) {
+if (raw[i].some(c => c && c.toLowerCase().trim()==='date')) { start=i+1; break; }
+}
+}
+
+if (start === -1) { showErr('Could not find the TIMESHEET data. Check tab name is "TIMESHEET".'); return; }
+
+rows = [];
+for (let i=start; i<raw.length; i++) {
+const r = raw[i];
+const ds = r[C.date];
+if (!ds || !ds.trim()) continue;
+const d = pDate(ds);
+if (!d || isNaN(d)) continue;
+const hrs = phr(r[C.hrs]);
+const subG = pfn(r[C.subG]);
+const subB = pfn(r[C.subB]);
+const subH = pfn(r[C.subH]);
+const propHrs = {};
+PROPS.forEach(p => { propHrs[p.label] = phr(r[p.idx]); });
+rows.push({
+date:d, day:r[C.day]||'', hrs,
+subG, subB, subH, total:subG+subB+subH,
+propHrs, notes:r[C.notes]||'',
+mKey:mKey(d), wKey:wKey(d),
+});
+}
+
+if (!rows.length) { showErr('No time entries found in the TIMESHEET tab.'); return; }
+
+// Default: full current month, all weeks
+propWk = 'ALL'; logWk = 'ALL';
+
+render();
+hideLoad();
+
+const now = new Date();
+document.getElementById('sync-lbl').textContent =
+'Live · Last synced '+now.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+document.getElementById('ftr').textContent =
+'Auto-refreshes every 30 min · Data pulled live from Google Sheets';
+
+if (timer) clearTimeout(timer);
+timer = setTimeout(fetchSheet, REFRESH_MS);
+}
+
 function render() {
   const cm = curMKey();
   const mo = rows.filter(r => r.mKey === cm);
@@ -443,33 +477,37 @@ function render() {
 }
 
 function renderBanner(mo, cm) {
-  const d   = new Date(cm+'-02T00:00:00');
-  const lbl = d.toLocaleString('en-US',{month:'long',year:'numeric'});
+const d = new Date(cm+'-02T00:00:00');
+const lbl = d.toLocaleString('en-US',{month:'long',year:'numeric'});
 
-  // Current month
-  document.getElementById('due-month').textContent = lbl+' Billing';
-  document.getElementById('due-hrs').textContent   = sum(mo,'hrs').toFixed(1)+' total hours logged this month';
-  document.getElementById('due-amt').textContent   = $m(sum(mo,'total'));
-  document.getElementById('due-note').textContent  = dueStr();
+// Current month
+document.getElementById('due-month').textContent = lbl+' Billing';
+document.getElementById('due-hrs').textContent = sum(mo,'hrs').toFixed(1)+' total hours logged this month';
+document.getElementById('due-amt').textContent = $m(sum(mo,'total'));
+document.getElementById('due-note').textContent = dueStr();
 
-  // Previous month balance — always calendar month before current
-  const now = new Date();
-  const prevDate = new Date(now.getFullYear(), now.getMonth()-1, 2);
-  const prevKey  = mKey(prevDate);
-  const prevRows = rows.filter(r => r.mKey === prevKey);
-  const prevTotal = sum(prevRows, 'total');
-  const prevStrip = document.getElementById('prev-bal');
+// Previous month balance — always calendar month before current
+const now = new Date();
+const prevDate = new Date(now.getFullYear(), now.getMonth()-1, 2);
+const prevKey = mKey(prevDate);
+const prevRows = rows.filter(r => r.mKey === prevKey);
+const prevTotal = sum(prevRows, 'total');
+const paidForPrev = paymentsByMonth[prevKey] || 0;
+const remaining = Math.round((prevTotal - paidForPrev) * 100) / 100;
+const prevStrip = document.getElementById('prev-bal');
 
-  // Strip hides when lastPaidKey >= prevKey (Dallas paid this month)
-  const isPaid = lastPaidKey && lastPaidKey >= prevKey;
-  if (prevTotal > 0 && !isPaid) {
-    const prevLbl = prevDate.toLocaleString('en-US',{month:'long',year:'numeric'});
-    document.getElementById('prev-bal-month').textContent = prevLbl+' — unpaid balance';
-    document.getElementById('prev-bal-amt').textContent   = $m(prevTotal);
-    prevStrip.classList.add('show');
-  } else {
-    prevStrip.classList.remove('show');
-  }
+if (prevTotal > 0 && remaining > 0.01) {
+const prevLbl = prevDate.toLocaleString('en-US',{month:'long',year:'numeric'});
+const partial = paidForPrev > 0;
+document.getElementById('prev-bal-month').textContent = prevLbl+(partial ? ' — partial balance remaining' : ' — unpaid balance');
+document.getElementById('prev-bal-amt').textContent = $m(remaining);
+document.getElementById('prev-bal-note').textContent = partial
+? ('Paid '+$m(paidForPrev)+' of '+$m(prevTotal)+' so far — remaining balance due')
+: 'Unpaid — please settle before the 5th';
+prevStrip.classList.add('show');
+} else {
+prevStrip.classList.remove('show');
+}
 }
 
 function renderLLC(mo) {
