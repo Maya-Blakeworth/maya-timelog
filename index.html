@@ -187,13 +187,13 @@
     </div>
     <div class="llc B">
       <div class="llc-name B">Blakeworth Management</div>
-      <div class="llc-props">SLP · General Operations</div>
+      <div class="llc-props">SLP · DC · Admin</div>
       <div class="llc-amt" id="llc-B-amt">—</div>
       <div class="llc-hrs" id="llc-B-hrs">—</div>
     </div>
     <div class="llc H">
       <div class="llc-name H">Hwood Ventures, LLC</div>
-      <div class="llc-props">DC · Woodrow · JHU Properties</div>
+      <div class="llc-props">Woodrow · JHU houses</div>
       <div class="llc-amt" id="llc-H-amt">—</div>
       <div class="llc-hrs" id="llc-H-hrs">—</div>
     </div>
@@ -249,30 +249,32 @@ const TAB_NAME  = 'TIMESHEET';   // exact tab name (case-sensitive)
 const REFRESH_MS = 30 * 60 * 1000; // 30 min auto-refresh
 const PAYMENTS_TAB = 'Payments'; // tab name for logged payments (Payment Date, Amount, Mode of Payment, Month Applied To, Notes)
 
-// Verified column indices (0-based) from actual sheet:
-// col0=blank, col1=Date, col2=Day, col3=TotalHrs,
-// col4=SLP, col5=Guilford, col6=219W, col7=232E, col8=328E,
-// col9=3119, col10=304E, col11=300E, col12=3410, col13=3106N, col14=Woodrow,
-// col15=SubtotalGuilfordLLC, col16=SubtotalBlakeworth, col17=SubtotalHwood, col18=Notes
+// Column indices (0-based), checked against the TIMESHEET header row on 2026-11-19.
+// If a column is added, moved or renamed in the sheet, update this list to match.
+// col0=blank (A), col1=Date (B), col2=Day (C), col3=Total Hours (D),
+// col4=SLP·DC·Admin (E), col5=Guilford Apts (F), col6=Woodrow (G), col7=232 E Univ (H),
+// col8=328 E 33rd (I), col9=2920 St Paul (J), col10=300 E Univ (K), col11=304 E Univ (L),
+// col12=3119 N Calvert (M), col13=219 W 29th (N), col14=3410 Oakenshaw (O),
+// col15=Blakeworth $ (P), col16=Guilford $ (Q), col17=Hwood $ (R), col18=Highlights (S)
 const C = {
   date:1, day:2, hrs:3,
-  slp:4, guilford:5, w219:6, e232:7, e328:8,
-  n3119:9, e304:10, e300:11, n3410:12, n3106:13, woodrow:14,
-  subG:15, subB:16, subH:17, notes:18
+  slp:4, guilford:5, woodrow:6, e232:7, e328:8,
+  stpaul:9, e300:10, e304:11, n3119:12, w219:13, n3410:14,
+  subB:15, subG:16, subH:17, notes:18
 };
 
 const PROPS = [
   {label:'SLP / Blakeworth', idx:C.slp,      llc:'B'},
   {label:'Guilford',          idx:C.guilford, llc:'G'},
-  {label:'219 W Calvert',     idx:C.w219,     llc:'H'},
-  {label:'232 E Univ',        idx:C.e232,     llc:'H'},
-  {label:'328 E Calvert',     idx:C.e328,     llc:'H'},
-  {label:'3119 N Calvert',    idx:C.n3119,    llc:'H'},
-  {label:'304 E Univ',        idx:C.e304,     llc:'H'},
-  {label:'300 E Abell',       idx:C.e300,     llc:'H'},
-  {label:'3410 N Calvert',    idx:C.n3410,    llc:'H'},
-  {label:'3106 N Calvert',    idx:C.n3106,    llc:'H'},
   {label:'Woodrow',           idx:C.woodrow,  llc:'H'},
+  {label:'232 E Univ',        idx:C.e232,     llc:'H'},
+  {label:'328 E 33rd',        idx:C.e328,     llc:'H'},
+  {label:'2920 St Paul',      idx:C.stpaul,   llc:'H'},
+  {label:'300 E Univ',        idx:C.e300,     llc:'H'},
+  {label:'304 E Univ',        idx:C.e304,     llc:'H'},
+  {label:'3119 N Calvert',    idx:C.n3119,    llc:'H'},
+  {label:'219 W 29th',        idx:C.w219,     llc:'H'},
+  {label:'3410 Oakenshaw',    idx:C.n3410,    llc:'H'},
 ];
 
 // ── STATE ────────────────────────────────────────────────────────────────────
@@ -307,7 +309,8 @@ function wKey(d) {
   const diff = dow === 0 ? -6 : 1 - dow;
   copy.setDate(copy.getDate() + diff);
   copy.setHours(0,0,0,0);
-  return copy.toISOString().slice(0,10);
+  // Local date, not toISOString(): in Madrid (UTC+1) toISOString shifts Monday back to Sunday.
+  return copy.getFullYear()+'-'+String(copy.getMonth()+1).padStart(2,'0')+'-'+String(copy.getDate()).padStart(2,'0');
 }
 
 function wLabel(wk) {
