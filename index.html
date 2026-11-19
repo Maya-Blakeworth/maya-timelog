@@ -203,7 +203,7 @@
   <div class="stat-row">
     <div class="stat"><div class="stat-lbl">Days Worked</div><div class="stat-val" id="s-days">—</div><div class="stat-sub">this month</div></div>
     <div class="stat"><div class="stat-lbl">Avg Hrs / Day</div><div class="stat-val" id="s-avg">—</div><div class="stat-sub">on working days</div></div>
-    <div class="stat"><div class="stat-lbl">Weeks Logged</div><div class="stat-val" id="s-wks">—</div><div class="stat-sub">of 4 this month</div></div>
+    <div class="stat"><div class="stat-lbl">Weeks Logged</div><div class="stat-val" id="s-wks">—</div><div class="stat-sub" id="s-wks-of">of — this month</div></div>
     <div class="stat"><div class="stat-lbl">Total Hours</div><div class="stat-val" id="s-hrs">—</div><div class="stat-sub">this month</div></div>
   </div>
 
@@ -532,7 +532,19 @@ function renderStats(mo) {
   set('s-days', days);
   set('s-avg',  days ? (hrs/days).toFixed(1) : '—');
   set('s-wks',  wks);
+  set('s-wks-of', 'of '+weeksInMonth(curMKey())+' this month');
   set('s-hrs',  hrs.toFixed(1));
+}
+
+// Mon–Sun weeks that hold at least one weekday of the month (same keys as wKey).
+function weeksInMonth(mk) {
+  const [y,m] = mk.split('-').map(Number);
+  const keys = new Set();
+  for (let d = new Date(y, m-1, 1); d.getMonth() === m-1; d.setDate(d.getDate()+1)) {
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) keys.add(wKey(d));
+  }
+  return keys.size;
 }
 
 function weeks(mo) {
